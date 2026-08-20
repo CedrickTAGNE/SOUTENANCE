@@ -1,0 +1,107 @@
+[
+  {
+    "id": 1,
+    "utilisateur": "admin",
+    "cible_modifiee": "PERSONNEL:CHR-001",
+    "description": "Profil infirmiere cree",
+    "date_action": "2026-08-20T07:00:00"
+  },
+  {
+    "id": 2,
+    "utilisateur": "direction",
+    "cible_modifiee": "SALLE:S-01",
+    "description": "Salle Accueil verifiee",
+    "date_action": "2026-08-20T07:05:00"
+  },
+  {
+    "id": 3,
+    "utilisateur": "securite",
+    "cible_modifiee": "PERSONNEL:CHR-012",
+    "description": "Acces securite active",
+    "date_action": "2026-08-20T07:10:00"
+  },
+  {
+    "id": 4,
+    "utilisateur": "admin",
+    "cible_modifiee": "SALLE:S-02",
+    "description": "Personnel du bloc mis a jour",
+    "date_action": "2026-08-20T07:15:00"
+  },
+  {
+    "id": 5,
+    "utilisateur": "direction",
+    "cible_modifiee": "PERSONNEL:CHR-006",
+    "description": "Service Direction confirme",
+    "date_action": "2026-08-20T07:20:00"
+  },
+  {
+    "id": 6,
+    "utilisateur": "admin",
+    "cible_modifiee": "PERSONNEL:CHR-003",
+    "description": "Photo de profil associee",
+    "date_action": "2026-08-20T07:25:00"
+  },
+  {
+    "id": 7,
+    "utilisateur": "supervision",
+    "cible_modifiee": "SALLE:S-05",
+    "description": "Zone Laboratoire controlee",
+    "date_action": "2026-08-20T07:30:00"
+  },
+  {
+    "id": 8,
+    "utilisateur": "audit",
+    "cible_modifiee": "ACCES_CONTROL:4",
+    "description": "Acces autorise verifie",
+    "date_action": "2026-08-20T07:35:00"
+  },
+  {
+    "id": 9,
+    "utilisateur": "admin",
+    "cible_modifiee": "PERSONNEL:CHR-009",
+    "description": "Fonction chirurgienne mise a jour",
+    "date_action": "2026-08-20T07:40:00"
+  },
+  {
+    "id": 10,
+    "utilisateur": "securite",
+    "cible_modifiee": "SALLE:S-12",
+    "description": "Poste de securite active",
+    "date_action": "2026-08-20T07:45:00"
+  },
+  {
+    "id": 11,
+    "utilisateur": "direction",
+    "cible_modifiee": "PERSONNEL:CHR-011",
+    "description": "Acces Maternite confirme",
+    "date_action": "2026-08-20T07:50:00"
+  },
+  {
+    "id": 12,
+    "utilisateur": "admin",
+    "cible_modifiee": "INTRUS:12",
+    "description": "Incident consulte",
+    "date_action": "2026-08-20T07:55:00"
+  },
+  {
+    "utilisateur": "admin",
+    "cible_modifiee": "PERSONNEL:CHR-043",
+    "description": "Profil enregistré ou modifié",
+    "date_action": "2026-08-20T02:27:14",
+    "id": 13
+  },
+  {
+    "utilisateur": "admin",
+    "cible_modifiee": "PERSONNEL:sdfsdfsdfd",
+    "description": "Profil enregistré ou modifié",
+    "date_action": "2026-08-20T11:24:26",
+    "id": 14
+  },
+  {
+    "utilisateur": "Christelle",
+    "cible_modifiee": "PERSONNEL:CHR-15",
+    "description": "Profil enregistré ou modifié",
+    "date_action": "2026-08-20T12:53:06",
+    "id": 15
+  }
+]

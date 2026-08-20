@@ -1,0 +1,6 @@
+[
+  {"username":"admin","password":"admin","nom":"Administrateur","role":"super_user"},
+  {"username":"Christelle","password":"12345678","nom":"Administratrice","role":"user"},
+  {"username":"Mike","password":"jerbolta","nom":"Le Monstre des Enfers","role":"user"}
+
+]

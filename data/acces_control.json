@@ -1,0 +1,14 @@
+[
+{"id":1,"cni":"CHR-001","piece":"Urgences","date_heure":"2026-08-20T08:10:00","statut":"Autorisé"},
+{"id":2,"cni":"CHR-002","piece":"Bloc opératoire","date_heure":"2026-08-20T08:15:00","statut":"Autorisé"},
+{"id":3,"cni":"CHR-003","piece":"Pharmacie","date_heure":"2026-08-20T08:20:00","statut":"Autorisé"},
+{"id":4,"cni":"CHR-004","piece":"Laboratoire","date_heure":"2026-08-20T08:25:00","statut":"Autorisé"},
+{"id":5,"cni":"CHR-005","piece":"Radiologie","date_heure":"2026-08-20T08:30:00","statut":"Autorisé"},
+{"id":6,"cni":"CHR-006","piece":"Administration","date_heure":"2026-08-20T08:35:00","statut":"Autorisé"},
+{"id":7,"cni":"CHR-007","piece":"Réanimation","date_heure":"2026-08-20T08:40:00","statut":"Autorisé"},
+{"id":8,"cni":"CHR-008","piece":"Accueil","date_heure":"2026-08-20T08:45:00","statut":"Autorisé"},
+{"id":9,"cni":"CHR-009","piece":"Bloc opératoire","date_heure":"2026-08-20T08:50:00","statut":"Autorisé"},
+{"id":10,"cni":"CHR-010","piece":"Urgences","date_heure":"2026-08-20T08:55:00","statut":"Autorisé"},
+{"id":11,"cni":"CHR-011","piece":"Direction","date_heure":"2026-08-20T09:00:00","statut":"Autorisé"},
+{"id":12,"cni":"CHR-012","piece":"Administration","date_heure":"2026-08-20T09:05:00","statut":"Autorisé"}
+]

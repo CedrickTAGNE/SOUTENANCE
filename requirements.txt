@@ -1,0 +1,11 @@
+Django==6.1
+djangorestframework==3.18.0
+numpy==2.5.2
+opencv-python==5.0.0.93
+opencv-contrib-python
+tkintermapview
+packaging==26.3
+pillow==12.3.0
+reportlab==5.0.0
+sqlparse==0.6.0
+tzdata==2026.3

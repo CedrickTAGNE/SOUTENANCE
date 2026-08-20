@@ -1,0 +1,14 @@
+[
+  {"id": 1, "nom_salle": "Accueil", "description": "Zone protegee de l'hopital", "numero": "S-01", "liste_personnel": []},
+  {"id": 2, "nom_salle": "Bloc operatoire", "description": "Zone protegee de l'hopital", "numero": "S-02", "liste_personnel": []},
+  {"id": 3, "nom_salle": "Urgences", "description": "Accueil des urgences vitales", "numero": "S-03", "liste_personnel": ["CHR-001", "CHR-010"]},
+  {"id": 4, "nom_salle": "Pharmacie", "description": "Stockage et dispensation des medicaments", "numero": "S-04", "liste_personnel": ["CHR-003"]},
+  {"id": 5, "nom_salle": "Laboratoire", "description": "Analyses biologiques", "numero": "S-05", "liste_personnel": ["CHR-004"]},
+  {"id": 6, "nom_salle": "Radiologie", "description": "Imagerie medicale", "numero": "S-06", "liste_personnel": ["CHR-005"]},
+  {"id": 7, "nom_salle": "Administration", "description": "Gestion administrative", "numero": "S-07", "liste_personnel": ["CHR-006", "CHR-012"]},
+  {"id": 8, "nom_salle": "Reanimation", "description": "Soins intensifs", "numero": "S-08", "liste_personnel": ["CHR-007"]},
+  {"id": 9, "nom_salle": "Direction", "description": "Direction de l'hopital", "numero": "S-09", "liste_personnel": ["CHR-006", "CHR-011"]},
+  {"id": 10, "nom_salle": "Maternite", "description": "Soins maternels et neonataux", "numero": "S-10", "liste_personnel": ["CHR-011"]},
+  {"id": 11, "nom_salle": "Consultations", "description": "Consultations externes", "numero": "S-11", "liste_personnel": ["CHR-002", "CHR-009"]},
+  {"id": 12, "nom_salle": "Securite", "description": "Poste de surveillance", "numero": "S-12", "liste_personnel": ["CHR-012"]}
+]

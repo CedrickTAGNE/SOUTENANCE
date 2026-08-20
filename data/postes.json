@@ -1,0 +1,14 @@
+[
+  {"zone_name": "Administration", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Accueil", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Bloc opératoire", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Direction", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Laboratoire", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Pharmacie", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Radiologie", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Réanimation", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Urgences", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Maternite", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Securite", "description": "Poste hospitalier", "lat": null, "lon": null},
+  {"zone_name": "Consultations", "description": "Poste hospitalier", "lat": null, "lon": null}
+]

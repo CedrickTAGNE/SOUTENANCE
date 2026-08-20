@@ -1,0 +1,14 @@
+[
+{"id":1,"photo":"media/intrus_001.jpg","piece":"Urgences","date_heure":"2026-08-20T07:01:00","remarque":"Visage inconnu"},
+{"id":2,"photo":"media/intrus_002.jpg","piece":"Bloc opératoire","date_heure":"2026-08-20T07:12:00","remarque":"Accès refusé"},
+{"id":3,"photo":"media/intrus_003.jpg","piece":"Pharmacie","date_heure":"2026-08-20T07:23:00","remarque":"Profil non reconnu"},
+{"id":4,"photo":"media/intrus_004.jpg","piece":"Laboratoire","date_heure":"2026-08-20T07:34:00","remarque":"Visage inconnu"},
+{"id":5,"photo":"media/intrus_005.jpg","piece":"Radiologie","date_heure":"2026-08-20T07:45:00","remarque":"Accès refusé"},
+{"id":6,"photo":"media/intrus_006.jpg","piece":"Administration","date_heure":"2026-08-20T07:56:00","remarque":"Badge invalide"},
+{"id":7,"photo":"media/intrus_007.jpg","piece":"Réanimation","date_heure":"2026-08-20T08:07:00","remarque":"Visage inconnu"},
+{"id":8,"photo":"media/intrus_008.jpg","piece":"Accueil","date_heure":"2026-08-20T08:18:00","remarque":"Accès refusé"},
+{"id":9,"photo":"media/intrus_009.jpg","piece":"Urgences","date_heure":"2026-08-20T08:29:00","remarque":"Profil non reconnu"},
+{"id":10,"photo":"media/intrus_010.jpg","piece":"Direction","date_heure":"2026-08-20T08:40:00","remarque":"Zone sensible"},
+{"id":11,"photo":"media/intrus_011.jpg","piece":"Laboratoire","date_heure":"2026-08-20T08:51:00","remarque":"Accès refusé"},
+{"id":12,"photo":"media/intrus_012.jpg","piece":"Pharmacie","date_heure":"2026-08-20T09:02:00","remarque":"Visage inconnu"}
+]
