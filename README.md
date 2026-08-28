@@ -91,7 +91,7 @@ Après connexion, la navigation se fait via les onglets :
 
 ## Auteure
 
-**Lomotey Ntede Julienne Christelle**  
+**Lomo Ntede Julienne Christelle**  
 Licence Professionnelle — Réseaux, Systèmes et Cybersécurité  
 Institut Supérieur AZIMUT, Yaoundé  
 Stage réalisé au CHRACERH (avril–août 2026)
