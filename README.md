@@ -58,3 +58,40 @@ Le système repose sur une architecture matérielle et logicielle en trois couch
 | Environnement      | Anaconda                |
 
 ## Structure du projet
+main.py # Orchestration et navigation entre les pages
+config.py # Configuration (connexion DB, constantes)
+db.py # Accès aux données (execute, fetch_all, fetch_one)
+page_login.py # Authentification
+page_dashboard.py # Supervision en temps réel
+page_database.py # Consultation des personnes / logs
+page_alertes.py # Gestion des alertes
+page_parameters.py # Paramètres de configuration
+
+## Base de données
+
+Le système s'appuie sur PostgreSQL avec les tables suivantes :
+- `TB_PERSONNE` — informations sur les personnes enregistrées
+- `LOGS_RECONNAISSANCE` — historique des détections/reconnaissances
+- `ALERTE` — alertes générées avec horodatage
+- `TB_CAMERA` — informations et statut des caméras
+
+## Installation
+
+1. Cloner le dépôt
+2. Créer un environnement Python (Anaconda recommandé)
+3. Installer les dépendances : `pip install customtkinter opencv-python psycopg2`
+4. Configurer la connexion PostgreSQL dans `config.py`
+5. Créer les tables nécessaires dans la base de données
+6. Lancer l'application : `python main.py`
+
+## Utilisation
+
+Après connexion, la navigation se fait via les onglets :
+**Dashboard → Base de Données → Alertes → Paramètres**
+
+## Auteure
+
+**Lomotey Ntede Julienne Christelle**  
+Licence Professionnelle — Réseaux, Systèmes et Cybersécurité  
+Institut Supérieur AZIMUT, Yaoundé  
+Stage réalisé au CHRACERH (avril–août 2026)
