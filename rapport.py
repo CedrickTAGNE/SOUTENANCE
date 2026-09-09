@@ -6,8 +6,14 @@ import customtkinter as ctk
 from tkinter import messagebox
 from datetime import datetime
 
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
 from config import FONT_NORMAL, FONT_BOLD, ACCENT_COLOR, SUCCESS_COLOR, TABLE_PERSONNE, TABLE_LOGS, TABLE_ZONE, TABLE_SALLE
 import db
+from dashboard import generate_person_pdf_report
 
 PAGE_BG = "#1a232c"
 PANEL_BG = "#151d24"
@@ -93,13 +99,16 @@ class RapportPage:
 
         ctk.CTkButton(action_frame, text="RAFRAÎCHIR", fg_color=ACCENT_COLOR,
                       hover_color="#2563eb", height=34, font=FONT_BOLD,
-                      command=self.refresh_report).pack(side="left", padx=(0, 8))
+                      command=self.refresh_report).pack(side="left", padx=(0, 6))
         ctk.CTkButton(action_frame, text="EXPORTER LES DONNÉES PDF", fg_color=SUCCESS_COLOR,
                       hover_color="#0f766e", height=34, font=FONT_BOLD,
                       command=self.generate_pdf).pack(side="left")
         ctk.CTkButton(action_frame, text="RAPPORT D'UNE SALLE", fg_color="#0f766e",
                       hover_color="#115e59", height=34, font=FONT_BOLD,
-                      command=self.show_room_report).pack(side="left", padx=(8, 0))
+                      command=self.show_room_report).pack(side="left", padx=(6, 6))
+        ctk.CTkButton(action_frame, text="RAPPORT PAR PERSONNE", fg_color="#2563eb",
+                      hover_color="#1d4ed8", height=34, font=FONT_BOLD,
+                      command=self.show_person_report).pack(side="left")
 
     def refresh_access_list(self):
         for child in self.access_list.winfo_children():
@@ -159,6 +168,114 @@ class RapportPage:
         selector.configure(command=render)
         ctk.CTkButton(window, text="ACTUALISER", command=render, fg_color=ACCENT_COLOR).pack(pady=(0, 12))
         render()
+
+    def show_person_report(self):
+        window = ctk.CTkToplevel(self.controller)
+        window.title("Rapport Individuel par Personne")
+        window.geometry("780x560")
+
+        people = db.read_table(TABLE_PERSONNE) or []
+        if not people:
+            messagebox.showinfo("Aucun membre", "Aucun membre du personnel enregistré dans la base de données.")
+            return
+
+        people_dict = {f"{p.get('nom', '')} {p.get('prenom', '')} ({p.get('cni', '')})": p for p in people}
+        names = list(people_dict.keys())
+
+        header = ctk.CTkFrame(window, fg_color="transparent")
+        header.pack(fill="x", padx=14, pady=(14, 6))
+
+        ctk.CTkLabel(header, text="Sélectionner la personne :", font=FONT_BOLD, text_color=TEXT_MAIN).pack(side="left", padx=(0, 10))
+        selector = ctk.CTkOptionMenu(header, values=names, width=350, fg_color="#0b0f19", button_color="#30363d")
+        selector.pack(side="left")
+
+        card_container = ctk.CTkFrame(window, fg_color="#10171d", border_width=1, border_color="#273145", corner_radius=8)
+        card_container.pack(fill="both", expand=True, padx=14, pady=8)
+
+        def render_person(*_):
+            for child in card_container.winfo_children():
+                child.destroy()
+
+            selected_name = selector.get()
+            person = people_dict.get(selected_name, {})
+            if not person:
+                return
+
+            card_container.grid_columnconfigure(0, weight=0)
+            card_container.grid_columnconfigure(1, weight=1)
+            card_container.grid_rowconfigure(0, weight=1)
+
+            # 1. Image / Photo sur le côté gauche
+            photo_box = ctk.CTkFrame(card_container, fg_color="#0b0f14", width=180, height=210, corner_radius=6, border_width=1, border_color="#2a3947")
+            photo_box.grid(row=0, column=0, padx=14, pady=14, sticky="n")
+            photo_box.pack_propagate(False)
+
+            photo_path = person.get("photo_path", "")
+            if photo_path and not os.path.isabs(photo_path):
+                photo_path = os.path.join(os.path.dirname(__file__), photo_path)
+
+            if photo_path and os.path.isfile(photo_path) and Image:
+                try:
+                    pil_img = Image.open(photo_path)
+                    ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(160, 190))
+                    lbl_img = ctk.CTkLabel(photo_box, image=ctk_img, text="")
+                    lbl_img.image = ctk_img
+                    lbl_img.pack(fill="both", expand=True)
+                except Exception:
+                    ctk.CTkLabel(photo_box, text="[ PAS DE PHOTO ]", text_color=TEXT_MUTED).pack(fill="both", expand=True)
+            else:
+                ctk.CTkLabel(photo_box, text="[ PAS DE PHOTO ]", text_color=TEXT_MUTED).pack(fill="both", expand=True)
+
+            # 2. Informations personnelles sur le côté droit juste à côté de l'image
+            info_frame = ctk.CTkFrame(card_container, fg_color="transparent")
+            info_frame.grid(row=0, column=1, padx=(10, 14), pady=14, sticky="nsew")
+
+            ctk.CTkLabel(info_frame, text=f"FICHE IDENTITÉ — {person.get('nom', '')} {person.get('prenom', '')}", font=("Times New Roman", 14, "bold"), text_color=ACCENT_COLOR).pack(anchor="w", pady=(0, 10))
+
+            details = [
+                ("Matricule CNI / ID", person.get("cni", "")),
+                ("Nom complet", f"{person.get('nom', '')} {person.get('prenom', '')}"),
+                ("Poste Hospitalier", person.get("poste", "Accueil")),
+                ("Service", person.get("service", "Zone hospitalière")),
+                ("Téléphone", person.get("telephone", "Non renseigné")),
+                ("Ville & Quartier", f"{person.get('ville', '')} - {person.get('quartier', '')}".strip(" -")),
+                ("Statut du Compte", "Actif (Autorisé)" if person.get("is_active", True) else "Inactif"),
+                ("Matrice FaceID", "Enregistrée (Valide)" if person.get("face_id") is not None else "Non scannée"),
+            ]
+
+            for label, val in details:
+                row_f = ctk.CTkFrame(info_frame, fg_color="transparent")
+                row_f.pack(fill="x", pady=2)
+                ctk.CTkLabel(row_f, text=f"{label} :", font=FONT_BOLD, text_color=TEXT_MUTED, width=140, anchor="w").pack(side="left")
+                ctk.CTkLabel(row_f, text=str(val), font=FONT_NORMAL, text_color=TEXT_MAIN, anchor="w").pack(side="left")
+
+            # Bouton d'exportation PDF pour cette personne avec sa photo
+            ctk.CTkButton(
+                info_frame,
+                text="📄 EXPORTER LE RAPPORT PDF DE CETTE PERSONNE (AVEC PHOTO)",
+                fg_color=SUCCESS_COLOR,
+                hover_color="#15803d",
+                height=32,
+                font=FONT_BOLD,
+                command=lambda p=person: self._export_single_person_pdf(p),
+            ).pack(fill="x", pady=(14, 0))
+
+        selector.configure(command=render_person)
+        render_person()
+
+    def _export_single_person_pdf(self, person):
+        try:
+            filepath = generate_person_pdf_report(person)
+            if filepath:
+                try:
+                    os.startfile(filepath)
+                except Exception:
+                    pass
+                messagebox.showinfo("PDF Généré", f"Le rapport PDF avec photo a été généré sous :\n{filepath}")
+            else:
+                messagebox.showerror("Erreur", "Impossible de générer le rapport PDF (ReportLab indisponible).")
+        except Exception as err:
+            messagebox.showerror("Erreur PDF", f"Échec de la création du PDF : {err}")
 
     def refresh_report(self):
         self.refresh_access_list()

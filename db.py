@@ -8,7 +8,7 @@ from datetime import datetime
 
 from config import (
     JSON_FILES, TABLE_PERSONNE, TABLE_LOGS, TABLE_ZONE, TABLE_INTRUS,
-    TABLE_SUPER_USER, TABLE_SALLE, TABLE_HISTORY, HOSPITAL_POSTES,
+    TABLE_SUPER_USER, TABLE_SALLE, TABLE_HISTORY, TABLE_CAMERAS, HOSPITAL_POSTES,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,6 +46,11 @@ def initialize_json_store():
         TABLE_SALLE: [{"id": index + 1, "nom_salle": poste, "description": "Zone protegée de l'hopital", "numero": f"S-{index + 1:02d}", "liste_personnel": []} for index, poste in enumerate(HOSPITAL_POSTES)],
         TABLE_HISTORY: [],
         TABLE_ZONE: [{"zone_name": poste, "description": "Poste hospitalier", "lat": None, "lon": None, "created_at": datetime.now()} for poste in HOSPITAL_POSTES],
+        TABLE_CAMERAS: [
+            {"id": 1, "nom": "Caméra Entrée Principale", "zone": "Accueil", "source": "0", "status": "Actif", "type": "USB / Interne"},
+            {"id": 2, "nom": "Caméra Bloc A", "zone": "Bloc opératoire", "source": "rtsp://192.168.1.101:554/stream", "status": "Actif", "type": "RTSP / IP"},
+            {"id": 3, "nom": "Caméra Urgences 1", "zone": "Urgences", "source": "rtsp://192.168.1.102:554/stream", "status": "Inactif", "type": "RTSP / IP"},
+        ],
     }
     for table, rows in defaults.items():
         if not os.path.exists(_path(table)):
@@ -58,6 +63,111 @@ def initialize_json_store():
             changed = True
     if changed:
         _write(TABLE_PERSONNE, personnel)
+    ensure_face_ids()
+
+
+def ensure_face_ids():
+    try:
+        personnel = _read(TABLE_PERSONNE)
+        if not personnel:
+            return
+        changed = False
+        from face_utils import extract_face_id_from_path
+        for person in personnel:
+            if not person.get("face_id") and person.get("photo_path"):
+                fid = extract_face_id_from_path(person["photo_path"])
+                if fid:
+                    person["face_id"] = fid
+                    changed = True
+        if changed:
+            _write(TABLE_PERSONNE, personnel)
+    except Exception as e:
+        print(f"[JSON] Error auto-populating face_ids: {e}")
+
+
+def check_duplicate_person(cni, nom="", prenom="", face_id=None, photo_path=None, exclude_cni=None, match_threshold=45.0):
+    """
+    Vérifie si le CNI, l'identité (Nom + Prénom) ou la photo/matrice faciale existe déjà dans TABLE_PERSONNE.
+    Retourne (is_duplicate: bool, error_message: str, existing_person: dict ou None).
+    """
+    try:
+        personnel = read_table(TABLE_PERSONNE) or []
+        if not personnel:
+            return False, "", None
+
+        cni_clean = str(cni or "").strip().upper()
+        nom_clean = str(nom or "").strip().lower()
+        prenom_clean = str(prenom or "").strip().lower()
+
+        input_words = set(re.findall(r'\w+', f"{nom_clean} {prenom_clean}"))
+
+        from face_utils import compare_face_ids, extract_face_id_from_path
+
+        if not face_id and photo_path:
+            face_id = extract_face_id_from_path(photo_path)
+
+        for person in personnel:
+            ex_cni = str(person.get("cni", "")).strip().upper()
+            if exclude_cni and str(exclude_cni).strip().upper() == ex_cni:
+                continue
+
+            ex_nom = str(person.get("nom", "")).strip().lower()
+            ex_prenom = str(person.get("prenom", "")).strip().lower()
+            full_ex_name = f"{person.get('nom', '')} {person.get('prenom', '')}".strip()
+
+            # 1. Vérification par CNI / Matricule
+            if cni_clean and ex_cni == cni_clean:
+                return True, f"Un membre avec le CNI/Matricule '{person.get('cni')}' est déjà enregistré ({full_ex_name}).", person
+
+            # 2. Vérification par Nom et Prénom (insensible à l'ordre)
+            if input_words:
+                ex_words = set(re.findall(r'\w+', f"{ex_nom} {ex_prenom}"))
+                if ex_words and input_words == ex_words:
+                    return True, f"Une personne nommée '{full_ex_name}' est déjà enregistrée (CNI: {person.get('cni')}).", person
+                common = input_words.intersection(ex_words)
+                if len(common) >= 2 and (len(common) == len(input_words) or len(common) == len(ex_words)):
+                    return True, f"Une personne similaire '{full_ex_name}' est déjà enregistrée (CNI: {person.get('cni')}).", person
+
+            # 3. Vérification par Matrice Faciale / Photo (Seuil de détection doublon à 45.0)
+            if face_id is not None:
+                ex_fid = person.get("face_id")
+                if not ex_fid and person.get("photo_path"):
+                    ex_fid = extract_face_id_from_path(person.get("photo_path"))
+                    if ex_fid:
+                        person["face_id"] = ex_fid
+
+                if ex_fid is not None:
+                    dup_threshold = max(float(match_threshold), 45.0)
+                    matched, dist = compare_face_ids(face_id, ex_fid, threshold=dup_threshold)
+                    if matched:
+                        return True, f"Ce visage est DÉJÀ ENREGISTRÉ pour : {full_ex_name} (CNI: {person.get('cni')}). Doublon refusé.", person
+
+        return False, "", None
+    except Exception as error:
+        print(f"[Check Duplicate Error] {error}")
+        return False, "", None
+
+
+def fetch_all(query="", params=None):
+    """Compatibilité JSON pour fetch_all sur TABLE_PERSONNE."""
+    if TABLE_PERSONNE in query.upper():
+        rows = read_table(TABLE_PERSONNE)
+        return [(r.get("cni"), r.get("nom"), r.get("prenom"), r.get("photo_path"),
+                 r.get("ville"), r.get("quartier"), r.get("face_id"), r.get("poste")) for r in rows]
+    return []
+
+
+def execute(query="", params=None):
+    """Compatibilité JSON pour execute sur TABLE_LOGS et TABLE_PERSONNE."""
+    if TABLE_LOGS in query.upper() and params:
+        add_record(TABLE_LOGS, {
+            "cni": params[0] if len(params) > 0 else "",
+            "date_heure": params[1] if len(params) > 1 else datetime.now(),
+            "piece": params[2] if len(params) > 2 else "Zone de surveillance",
+            "statut": params[3] if len(params) > 3 else "Détecté"
+        })
+
+
 
 
 def get_postes():

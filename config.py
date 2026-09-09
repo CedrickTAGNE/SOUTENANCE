@@ -17,6 +17,7 @@ TABLE_INTRUS = "INTRUS"
 TABLE_SUPER_USER = "SUPER_USER"
 TABLE_SALLE = "SALLES"
 TABLE_HISTORY = "HISTORIQUE_MODIFICATION"
+TABLE_CAMERAS = "CAMERAS"
 
 JSON_FILES = {
     TABLE_PERSONNE: os.path.join("data", "personnel.json"),
@@ -26,6 +27,7 @@ JSON_FILES = {
     TABLE_SALLE: os.path.join("data", "salles.json"),
     TABLE_HISTORY: os.path.join("data", "historique_modification.json"),
     TABLE_ZONE: os.path.join("data", "postes.json"),
+    TABLE_CAMERAS: os.path.join("data", "cameras.json"),
 }
 
 APP_USERNAME = "admin"

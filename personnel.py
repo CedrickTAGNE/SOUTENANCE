@@ -137,9 +137,18 @@ class PersonnelPage:
                          font=FONT_BOLD, text_color=TEXT_MAIN).pack(anchor="w", padx=8, pady=(6, 0))
             ctk.CTkLabel(card, text=f"{person.get('cni', '')}  •  {person.get('poste', 'Poste non défini')}",
                          font=FONT_NORMAL, text_color=SUCCESS_COLOR if active else DANGER_COLOR).pack(anchor="w", padx=8, pady=(0, 6))
-            card.bind("<Button-1>", lambda event, item=person: self.load_person(item))
+
+            def select_person(event=None, item=person):
+                self.load_person(item)
+
+            def open_detail(event=None, item=person):
+                self.open_person_details_modal(item)
+
+            card.bind("<Button-1>", select_person)
+            card.bind("<Double-Button-1>", open_detail)
             for child in card.winfo_children():
-                child.bind("<Button-1>", lambda event, item=person: self.load_person(item))
+                child.bind("<Button-1>", select_person)
+                child.bind("<Double-Button-1>", open_detail)
 
     def refresh_rooms(self):
         for child in self.rooms_list.winfo_children():
@@ -171,6 +180,37 @@ class PersonnelPage:
             )
             self.refresh_rooms()
 
+    @staticmethod
+    def _resolve_photo_path(path):
+        if not path:
+            return ""
+        raw = str(path).replace("\\", "/")
+        if os.path.isabs(raw):
+            return raw
+
+        root = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.abspath(os.path.join(root, raw)),
+            os.path.abspath(os.path.join(root, raw.replace("/", os.sep))),
+            os.path.abspath(os.path.join(root, "media", os.path.basename(raw))),
+            os.path.abspath(os.path.join(root, "data_photos", os.path.basename(raw))),
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+        return candidates[0]
+
+    @staticmethod
+    def _store_photo_path(abs_path):
+        if not abs_path:
+            return ""
+        root = os.path.dirname(os.path.abspath(__file__))
+        try:
+            rel = os.path.relpath(abs_path, root)
+            return rel.replace("\\", "/")
+        except Exception:
+            return os.path.basename(abs_path)
+
     def load_person(self, person):
         self.editing_cni = person.get("cni")
         for key, entry in self.form_entries.items():
@@ -180,7 +220,8 @@ class PersonnelPage:
         self.poste_option.set(poste if poste in db.get_postes() else "Accueil")
         self.status_option.set("Actif" if person.get("is_active", True) else "Inactif")
         self.photo_path = person.get("photo_path", "") or ""
-        self.photo_status.configure(text=os.path.basename(self.photo_path) if self.photo_path else "Aucune photo sélectionnée")
+        stored_path = self._resolve_photo_path(self.photo_path)
+        self.photo_status.configure(text=os.path.basename(stored_path) if stored_path and os.path.isfile(stored_path) else "Aucune photo sélectionnée")
         self.face_id = person.get("face_id")
         self.face_status.configure(
             text="FaceId enregistré" if self.face_id is not None else "FaceId non scanné",
@@ -198,6 +239,170 @@ class PersonnelPage:
         self.poste_option.set(db.get_postes()[0] if db.get_postes() else "Accueil")
         self.status_option.set("Actif")
 
+    def open_person_details_modal(self, person):
+        window = ctk.CTkToplevel(self.parent)
+        window.title(f"Fiche Détaillée — {person.get('nom', '')} {person.get('prenom', '')}")
+        window.geometry("780x560")
+        window.grab_set()
+        window.attributes("-topmost", True)
+        window.lift()
+        window.focus_force()
+
+        window.grid_columnconfigure(0, weight=4)
+        window.grid_columnconfigure(1, weight=6)
+        window.grid_rowconfigure(0, weight=1)
+
+        modal_state = {
+            "editing_cni": person.get("cni"),
+            "photo_path": person.get("photo_path", "") or "",
+            "face_id": person.get("face_id"),
+        }
+
+        # SECTION GAUCHE : PHOTO ENCADRÉE & SCAN FACEID
+        left_panel = ctk.CTkFrame(window, fg_color="#161b22", border_width=1, border_color="#30363d")
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+        ctk.CTkLabel(left_panel, text="📷 PHOTO DE PROFIL & FACEID", font=FONT_BOLD, text_color=ACCENT_COLOR).pack(anchor="w", padx=12, pady=(12, 6))
+
+        photo_frame = ctk.CTkFrame(left_panel, fg_color="#0b0f19", width=180, height=210, corner_radius=6, border_width=1, border_color="#30363d")
+        photo_frame.pack(padx=12, pady=8)
+        photo_frame.pack_propagate(False)
+
+        lbl_photo = ctk.CTkLabel(photo_frame, text="[ CHARGEMENT PHOTO ]", text_color=TEXT_MUTED)
+        lbl_photo.pack(fill="both", expand=True)
+
+        def update_photo_display():
+            path = self._resolve_photo_path(modal_state["photo_path"])
+            if path and os.path.isfile(path) and Image is not None:
+                try:
+                    pil_img = Image.open(path)
+                    pil_img = pil_img.copy()
+                    ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(160, 190))
+                    lbl_photo.configure(image=ctk_img, text="")
+                    lbl_photo.image = ctk_img
+                    return
+                except Exception:
+                    pass
+            lbl_photo.configure(image=None, text="[ AUCUNE PHOTO ]")
+            lbl_photo.image = None
+
+        update_photo_display()
+
+        lbl_face_status = ctk.CTkLabel(
+            left_panel,
+            text="● FaceId enregistré" if modal_state["face_id"] is not None else "▲ FaceId non scanné",
+            font=FONT_NORMAL,
+            text_color=SUCCESS_COLOR if modal_state["face_id"] is not None else DANGER_COLOR
+        )
+        lbl_face_status.pack(pady=4)
+
+        def modal_open_camera():
+            self.open_photo_camera(target_state=modal_state, update_callback=update_photo_display)
+
+        def modal_open_scan():
+            self.open_face_scan(target_state=modal_state, status_label=lbl_face_status)
+
+        ctk.CTkButton(left_panel, text="📷 CAPTURER NOUVELLE PHOTO", fg_color="#374151", height=28, command=modal_open_camera).pack(fill="x", padx=12, pady=4)
+        ctk.CTkButton(left_panel, text="👤 SCANNER / MODIFIER FACEID", fg_color=ACCENT_COLOR, hover_color="#2563eb", height=28, command=modal_open_scan).pack(fill="x", padx=12, pady=4)
+
+        # SECTION DROITE : INFORMATIONS PERSONNELLES
+        right_panel = ctk.CTkFrame(window, fg_color="#161b22", border_width=1, border_color="#30363d")
+        right_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10)
+
+        ctk.CTkLabel(right_panel, text="📝 INFORMATIONS PERSONNELLES", font=FONT_BOLD, text_color=ACCENT_COLOR).pack(anchor="w", padx=12, pady=(12, 6))
+
+        form_scroll = ctk.CTkScrollableFrame(right_panel, fg_color="transparent")
+        form_scroll.pack(fill="both", expand=True, padx=8, pady=4)
+
+        modal_entries = {}
+        fields = [
+            ("cni", "MATRICULE / CNI"),
+            ("nom", "NOM"),
+            ("prenom", "PRÉNOM"),
+            ("fonction", "FONCTION"),
+            ("service", "SERVICE"),
+            ("telephone", "TÉLÉPHONE"),
+        ]
+        for key, label in fields:
+            ctk.CTkLabel(form_scroll, text=label, font=FONT_NORMAL, text_color=TEXT_MAIN).pack(anchor="w", padx=6, pady=(4, 1))
+            entry = ctk.CTkEntry(form_scroll, height=28, fg_color="#0b0f19", border_color="#30363d")
+            entry.insert(0, str(person.get(key, "") or ""))
+            entry.pack(fill="x", padx=6, pady=(0, 4))
+            modal_entries[key] = entry
+
+        ctk.CTkLabel(form_scroll, text="POSTE HOSPITALIER", font=FONT_NORMAL, text_color=TEXT_MAIN).pack(anchor="w", padx=6, pady=(4, 1))
+        poste_opt = ctk.CTkOptionMenu(form_scroll, values=db.get_postes() or ["Accueil"], height=28, fg_color="#0b0f19", button_color="#30363d")
+        curr_poste = person.get("poste", "Accueil")
+        poste_opt.set(curr_poste if curr_poste in db.get_postes() else "Accueil")
+        poste_opt.pack(fill="x", padx=6, pady=(0, 4))
+
+        ctk.CTkLabel(form_scroll, text="STATUT", font=FONT_NORMAL, text_color=TEXT_MAIN).pack(anchor="w", padx=6, pady=(4, 1))
+        status_opt = ctk.CTkOptionMenu(form_scroll, values=["Actif", "Inactif"], height=28, fg_color="#0b0f19", button_color="#30363d")
+        status_opt.set("Actif" if person.get("is_active", True) else "Inactif")
+        status_opt.pack(fill="x", padx=6, pady=(0, 6))
+
+        # BARRE D'ACTIONS
+        action_bar = ctk.CTkFrame(right_panel, fg_color="transparent")
+        action_bar.pack(fill="x", padx=8, pady=(4, 10))
+
+        def modal_save():
+            new_vals = {k: e.get().strip() for k, e in modal_entries.items()}
+            if not new_vals["cni"] or not new_vals["nom"]:
+                messagebox.showwarning("Incomplet", "Matricule et Nom sont obligatoires.")
+                return
+
+            serializable_face_id = (
+                modal_state["face_id"].tolist() if hasattr(modal_state["face_id"], "tolist") else modal_state["face_id"]
+            )
+
+            is_dup, err_msg, _ = db.check_duplicate_person(
+                cni=new_vals["cni"],
+                nom=new_vals.get("nom", ""),
+                prenom=new_vals.get("prenom", ""),
+                face_id=serializable_face_id,
+                photo_path=modal_state["photo_path"],
+                exclude_cni=modal_state["editing_cni"],
+            )
+            if is_dup:
+                messagebox.showerror("Enregistrement Refusé - Doublon Détecté", err_msg)
+                return
+
+            new_vals.update({
+                "poste": poste_opt.get(),
+                "is_active": status_opt.get() == "Actif",
+                "photo_path": modal_state["photo_path"],
+                "face_id": serializable_face_id,
+                "date_enregistrement": datetime.now().isoformat(timespec="seconds"),
+            })
+
+            people_table = db.read_table(TABLE_PERSONNE) or []
+            if modal_state["editing_cni"]:
+                people_table = [p for p in people_table if p.get("cni") != modal_state["editing_cni"]]
+            people_table = [p for p in people_table if p.get("cni") != new_vals["cni"]]
+            people_table.append(new_vals)
+            db.write_table(TABLE_PERSONNE, people_table)
+
+            current_user = getattr(self.controller, "current_account", {}).get("username", "Système")
+            db.log_history(current_user, f"PERSONNEL:{new_vals['cni']}", "Fiche modifiée via l'interface détaillée")
+
+            self.refresh_people()
+            messagebox.showinfo("Succès", f"Informations de {new_vals['nom']} mises à jour avec succès.")
+            window.destroy()
+
+        def modal_delete():
+            if not messagebox.askyesno("Confirmation", f"Supprimer définitivement le membre {person.get('nom', '')} {person.get('prenom', '')} ?"):
+                return
+            if db.delete_record(TABLE_PERSONNE, modal_state["editing_cni"], key="cni"):
+                current_user = getattr(self.controller, "current_account", {}).get("username", "Système")
+                db.log_history(current_user, f"PERSONNEL:{modal_state['editing_cni']}", "Profil supprimé via l'interface détaillée")
+                self.refresh_people()
+                messagebox.showinfo("Suppression", "Membre supprimé avec succès.")
+                window.destroy()
+
+        ctk.CTkButton(action_bar, text="💾 MODIFIER", fg_color=SUCCESS_COLOR, hover_color="#15803d", height=32, font=FONT_BOLD, command=modal_save).pack(side="left", expand=True, fill="x", padx=(0, 4))
+        ctk.CTkButton(action_bar, text="🗑️ SUPPRIMER", fg_color=DANGER_COLOR, hover_color="#991b1b", height=32, font=FONT_BOLD, command=modal_delete).pack(side="left", expand=True, fill="x", padx=4)
+        ctk.CTkButton(action_bar, text="FERMER", fg_color="#374151", height=32, command=window.destroy).pack(side="right", expand=True, fill="x", padx=(4, 0))
+
     def _init_camera(self, cv2):
         for backend in [getattr(cv2, "CAP_DSHOW", None), cv2.CAP_ANY]:
             cap = cv2.VideoCapture(0, backend) if backend is not None else cv2.VideoCapture(0)
@@ -206,7 +411,7 @@ class PersonnelPage:
             cap.release()
         return None
 
-    def open_photo_camera(self):
+    def open_photo_camera(self, target_state=None, update_callback=None):
         try:
             import cv2
         except ImportError:
@@ -259,13 +464,20 @@ class PersonnelPage:
         def capture():
             if state["frame"] is None:
                 return
-            os.makedirs(os.path.join(os.path.dirname(__file__), "media"), exist_ok=True)
-            identifier = self.form_entries["cni"].get().strip() or "personnel"
+            media_dir = os.path.join(os.path.dirname(__file__), "media")
+            os.makedirs(media_dir, exist_ok=True)
+            identifier = self.form_entries["cni"].get().strip() if "cni" in self.form_entries else "personnel"
             filename = f"{identifier}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            path = os.path.join("media", filename)
-            if cv2.imwrite(os.path.join(os.path.dirname(__file__), path), state["frame"]):
-                self.photo_path = path
-                self.photo_status.configure(text=filename)
+            abs_path = os.path.join(media_dir, filename)
+            if cv2.imwrite(abs_path, state["frame"]):
+                stored_path = self._store_photo_path(abs_path)
+                if target_state is not None:
+                    target_state["photo_path"] = stored_path
+                    if update_callback:
+                        update_callback()
+                else:
+                    self.photo_path = stored_path
+                    self.photo_status.configure(text=filename)
                 close()
 
         capture_button.configure(command=capture)
@@ -273,7 +485,7 @@ class PersonnelPage:
         window.protocol("WM_DELETE_WINDOW", close)
         update_preview()
 
-    def open_face_scan(self):
+    def open_face_scan(self, target_state=None, status_label=None):
         try:
             import cv2
             from face_utils import extract_face_id
@@ -296,7 +508,6 @@ class PersonnelPage:
         window.geometry("460x440")
         window.resizable(False, False)
         
-        # Forcer la fenêtre à s'ouvrir et à rester au premier plan
         window.attributes("-topmost", True)
         window.lift()
         window.focus_force()
@@ -319,7 +530,6 @@ class PersonnelPage:
 
         camera = self._init_camera(cv2)
         
-        # Configuration avec 20 secondes de scan minimum garanti
         MIN_SCAN_DURATION = 20
         state = {
             "running": True, 
@@ -352,7 +562,6 @@ class PersonnelPage:
                 for (x, y, w, h) in faces:
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-                # Capture du visage si détecté et pas encore enregistré
                 if len(faces) > 0 and state["captured_face_id"] is None:
                     try:
                         face_id = extract_face_id(frame, cascade)
@@ -362,7 +571,6 @@ class PersonnelPage:
                     if face_id is not None:
                         state["captured_face_id"] = face_id
 
-                # Mettre à jour les messages d'état
                 if state["captured_face_id"] is not None:
                     if remaining > 0:
                         status.configure(
@@ -370,8 +578,13 @@ class PersonnelPage:
                             text_color=SUCCESS_COLOR
                         )
                     else:
-                        self.face_id = state["captured_face_id"]
-                        self.face_status.configure(text="FaceId enregistré", text_color=SUCCESS_COLOR)
+                        if target_state is not None:
+                            target_state["face_id"] = state["captured_face_id"]
+                            if status_label:
+                                status_label.configure(text="● FaceId enregistré", text_color=SUCCESS_COLOR)
+                        else:
+                            self.face_id = state["captured_face_id"]
+                            self.face_status.configure(text="FaceId enregistré", text_color=SUCCESS_COLOR)
                         status.configure(text="Scan terminé avec succès.", text_color=SUCCESS_COLOR)
                         state["running"] = False
                         camera.release()
@@ -429,6 +642,19 @@ class PersonnelPage:
             serializable_face_id = (
                 self.face_id.tolist() if hasattr(self.face_id, "tolist") else self.face_id
             )
+
+            is_dup, err_msg, _ = db.check_duplicate_person(
+                cni=values["cni"],
+                nom=values.get("nom", ""),
+                prenom=values.get("prenom", ""),
+                face_id=serializable_face_id,
+                photo_path=self.photo_path,
+                exclude_cni=self.editing_cni
+            )
+            if is_dup:
+                self.show_save_feedback(False, err_msg)
+                messagebox.showerror("Enregistrement Refusé - Doublon Détecté", err_msg)
+                return
 
             values.update({
                 "poste": self.poste_option.get(),

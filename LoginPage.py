@@ -170,21 +170,36 @@ class LoginPage(ctk.CTkFrame):
         self._build_controls()
 
     def _build_background(self):
+        self.configure(fg_color="#070b12")
         bg_path = _find_background_file()
-        if not (Image and bg_path):
+        if not (Image and ImageTk and bg_path):
             ctk.CTkLabel(
                 self,
-                text=f"Image introuvable : {LOGIN_BACKGROUND_BASENAME}.png/.jpg/.jpeg\n"
-                     f"Place-la au même endroit que main.py, sous ce nom exact.",
-                text_color="#f85149", font=FONT_BOLD,
+                text=(
+                    f"Image introuvable : {LOGIN_BACKGROUND_BASENAME}.png/.jpg/.jpeg\n"
+                    f"Place-la au même endroit que main.py, sous ce nom exact.\n"
+                    "Le fond de secours sombre a été appliqué."
+                ),
+                text_color="#f8fafc", font=FONT_BOLD,
+                fg_color="#070b12",
+                justify="center",
             ).place(relx=0.5, rely=0.5, anchor="center")
             return
 
-        img = Image.open(bg_path).convert("RGBA").resize((WINDOW_W, WINDOW_H))
-        img = _hide_background_title(img)
-        img = _build_glass_card(img)
-        self.bg_photo = ImageTk.PhotoImage(img.convert("RGB"))
-        ctk.CTkLabel(self, text="", image=self.bg_photo).place(x=0, y=0, relwidth=1, relheight=1)
+        try:
+            img = Image.open(bg_path).convert("RGBA").resize((WINDOW_W, WINDOW_H))
+            img = _hide_background_title(img)
+            img = _build_glass_card(img)
+            self.bg_photo = ImageTk.PhotoImage(img.convert("RGB"))
+            ctk.CTkLabel(self, text="", image=self.bg_photo, fg_color="transparent").place(x=0, y=0, relwidth=1, relheight=1)
+        except Exception:
+            ctk.CTkLabel(
+                self,
+                text="Erreur de chargement du fond d’écran.\nLe thème sombre par défaut a été activé.",
+                text_color="#f8fafc", font=FONT_BOLD,
+                fg_color="#070b12",
+                justify="center",
+            ).place(relx=0.5, rely=0.5, anchor="center")
 
     def _build_controls(self):
         self._add_logo()

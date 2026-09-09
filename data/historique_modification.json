@@ -103,5 +103,12 @@
     "description": "Profil enregistré ou modifié",
     "date_action": "2026-08-20T12:53:06",
     "id": 15
+  },
+  {
+    "utilisateur": "Christelle",
+    "cible_modifiee": "PERSONNEL:006",
+    "description": "Profil enregistré ou modifié",
+    "date_action": "2026-08-22T18:03:28",
+    "id": 16
   }
 ]

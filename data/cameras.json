@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "nom": "Caméra Entrée Principale",
+    "zone": "Accueil",
+    "source": "0",
+    "status": "Actif",
+    "type": "USB / Interne"
+  },
+  {
+    "id": 2,
+    "nom": "Caméra Bloc A",
+    "zone": "Bloc opératoire",
+    "source": "rtsp://192.168.1.101:554/stream",
+    "status": "Actif",
+    "type": "RTSP / IP"
+  },
+  {
+    "id": 3,
+    "nom": "Caméra Urgences 1",
+    "zone": "Urgences",
+    "source": "rtsp://192.168.1.102:554/stream",
+    "status": "Inactif",
+    "type": "RTSP / IP"
+  }
+]

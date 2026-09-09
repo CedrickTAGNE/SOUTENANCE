@@ -25,7 +25,7 @@ except ImportError:
 # Assure-toi que ces imports correspondent à ton projet
 from config import FONT_NORMAL, FONT_BOLD, ACCENT_COLOR, TABLE_PERSONNE, TABLE_LOGS, TABLE_INTRUS
 import db
-from face_utils import compare_face_ids, extract_face_id
+from face_utils import compare_face_ids, extract_face_id, extract_face_id_from_path
 
 # --- Palette de couleurs (Design de l'image) ---
 PAGE_BG = "#1a232c"
@@ -43,6 +43,105 @@ DANGER_RED = "#922b21"
 WELCOME_GREEN = "#2ecc71"
 
 
+def generate_person_pdf_report(person_data, output_dir=None):
+    """
+    Génère un rapport PDF individuel complet avec la photo de la personne
+    positionnée côte à côte avec ses informations personnelles.
+    """
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        return None
+
+    if not output_dir:
+        output_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+    os.makedirs(output_dir, exist_ok=True)
+
+    cni = str(person_data.get("cni", "INCONNU")).strip()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = os.path.join(output_dir, f"Rapport_Detection_{cni}_{ts}.pdf")
+
+    c = canvas.Canvas(filepath, pagesize=letter)
+    width, height = letter
+
+    # En-tête / Banner principal
+    c.setFillColorRGB(0.06, 0.12, 0.22)
+    c.rect(0, height - 85, width, 85, fill=True, stroke=False)
+
+    c.setFillColorRGB(1, 1, 1)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(40, height - 35, "C.H.R.A.C.E.R.H ACCES CONTROL")
+    c.setFont("Helvetica", 11)
+    c.drawString(40, height - 55, "Rapport Automatique de Détection Faciale & Supervision Biométrique")
+
+    c.setFillColorRGB(0.2, 0.2, 0.2)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(40, height - 105, f"Date de Détection : {datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}")
+    c.drawString(340, height - 105, "Statut : ACCÈS AUTORISÉ (Membre de la BD)")
+
+    c.setLineWidth(1)
+    c.setStrokeColorRGB(0.8, 0.8, 0.8)
+    c.line(40, height - 115, width - 40, height - 115)
+
+    # Zone Photo + Informations côte à côte
+    y_start = height - 145
+    photo_path = person_data.get("photo_path", "")
+    if photo_path and not os.path.isabs(photo_path):
+        photo_path = os.path.join(os.path.dirname(__file__), photo_path)
+
+    if photo_path and os.path.isfile(photo_path):
+        try:
+            c.drawImage(photo_path, width - 175, y_start - 130, width=130, height=140, preserveAspectRatio=True)
+            c.setStrokeColorRGB(0.18, 0.43, 0.89)
+            c.setLineWidth(2)
+            c.rect(width - 175, y_start - 130, 130, 140, fill=False, stroke=True)
+        except Exception as e:
+            print(f"[PDF Draw Photo Error] {e}")
+
+    c.setFont("Helvetica-Bold", 13)
+    c.setFillColorRGB(0.18, 0.43, 0.89)
+    c.drawString(40, y_start, "INFORMATIONS PERSONNELLES")
+
+    c.setFillColorRGB(0.1, 0.1, 0.1)
+
+    details = [
+        ("Matricule CNI / ID :", str(person_data.get("cni", "----"))),
+        ("Nom :", str(person_data.get("nom", "----"))),
+        ("Prénom :", str(person_data.get("prenom", "----"))),
+        ("Poste Hospitalier :", str(person_data.get("poste", "Accueil / Surveillance"))),
+        ("Ville de résidence :", str(person_data.get("ville", "Non spécifiée"))),
+        ("Quartier :", str(person_data.get("quartier", "Non spécifié"))),
+        ("Date Enregistrement :", str(person_data.get("date_enregistrement", datetime.now().strftime("%d/%m/%Y")))),
+    ]
+
+    curr_y = y_start - 25
+    for label, val in details:
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(40, curr_y, label)
+        c.setFont("Helvetica", 10)
+        c.drawString(160, curr_y, val)
+        curr_y -= 18
+
+    curr_y -= 15
+    c.setStrokeColorRGB(0.8, 0.8, 0.8)
+    c.line(40, curr_y, width - 40, curr_y)
+    curr_y -= 25
+
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColorRGB(0.08, 0.63, 0.29)
+    c.drawString(40, curr_y, "● VALIDATION BIOMÉTRIQUE : PROFIL FACIAL CONFIRMÉ AVEC SUCCÈS")
+
+    curr_y -= 20
+    c.setFont("Helvetica-Oblique", 9)
+    c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.drawString(40, curr_y, "Ce rapport a été généré automatiquement par le système CHRACERH lors de la détection caméra.")
+
+    c.showPage()
+    c.save()
+    return filepath
+
+
 class WebcamPanel:
     def __init__(self, parent, size=(640, 360), fallback_text="[ Caméra inactive ]", auto_start=False):
         self.parent = parent
@@ -54,6 +153,8 @@ class WebcamPanel:
         self.overlay_rect = None  # normalized rect (x_norm, y_norm, w_norm, h_norm)
         self.overlay_color = None
         self.show_scan_grid = False
+        self.focus_frame = None
+        self.latest_frame = None
         if auto_start:
             self.start()
 
@@ -78,7 +179,11 @@ class WebcamPanel:
         if self.cap is None or not self.cap.isOpened():
             return
 
-        ret, frame = self.cap.read()
+        frame = self.latest_frame
+        ret = frame is not None
+        if self.focus_frame is not None:
+            frame = self.focus_frame
+            ret = True
         if ret and frame is not None:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(rgb).resize(self.size)
@@ -117,6 +222,8 @@ class WebcamPanel:
         if self.cap is not None:
             self.cap.release()
             self.cap = None
+        self.latest_frame = None
+        self.focus_frame = None
         self.label.configure(image=None, text=self.fallback_text)
         self.label.image = None
 
@@ -127,6 +234,12 @@ class WebcamPanel:
 
     def set_scan_grid(self, enabled):
         self.show_scan_grid = enabled
+
+    def set_focus_frame(self, frame):
+        self.focus_frame = frame.copy() if frame is not None else None
+
+    def set_latest_frame(self, frame):
+        self.latest_frame = frame.copy() if frame is not None else None
 
 
 class DashboardPage:
@@ -144,8 +257,12 @@ class DashboardPage:
         self.face_cascade = None
         if cv2:
             try:
-                cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-                self.face_cascade = cv2.CascadeClassifier(cascade_path)
+                local_xml = os.path.join(os.path.dirname(__file__), 'haarcascade_frontalface_default.xml')
+                if os.path.exists(local_xml):
+                    self.face_cascade = cv2.CascadeClassifier(local_xml)
+                else:
+                    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+                    self.face_cascade = cv2.CascadeClassifier(cascade_path)
             except Exception:
                 self.face_cascade = None
 
@@ -192,21 +309,68 @@ class DashboardPage:
         results_outer_frame.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         self._create_section_title(results_outer_frame, "IDENTIFICATION TEMPS RÉEL", "CAPTURE ET STOCKAGE LOCAL")
 
-        # Zone d'affichage du résultat avec le message de bienvenue dynamique
+        # Zone d'affichage du résultat avec la fiche complète d'information
         self.match_display = ctk.CTkFrame(results_outer_frame, fg_color="transparent")
-        self.match_display.pack(fill="both", expand=True, padx=6, pady=6)
+        self.match_display.pack(fill="both", expand=True, padx=6, pady=4)
 
         self.lbl_welcome = ctk.CTkLabel(self.match_display, text="<< EN ATTENTE DE DÉTECTION >>",
-                                        font=("Times New Roman", 15, "bold"), text_color=WELCOME_GREEN)
-        self.lbl_welcome.pack(pady=(15, 5))
+                                        font=("Times New Roman", 14, "bold"), text_color=WELCOME_GREEN)
+        self.lbl_welcome.pack(pady=(2, 4))
 
-        self.lbl_match_name = ctk.CTkLabel(self.match_display, text="Aucune personne détectée",
-                                           font=("Times New Roman", 12, "bold"), text_color=TEXT_MAIN)
-        self.lbl_match_name.pack(pady=(2, 2))
+        # Carte d'identité / Fiche détaillée
+        self.info_card = ctk.CTkFrame(self.match_display, fg_color="#10171d", border_width=1, border_color=FIELD_BORDER, corner_radius=6)
+        self.info_card.pack(fill="both", expand=True, padx=4, pady=2)
 
-        self.lbl_match_status = ctk.CTkLabel(self.match_display, text="Système en veille active", font=FONT_NORMAL,
-                                             text_color=TEXT_MUTED)
-        self.lbl_match_status.pack(pady=(2, 10))
+        self.info_card.grid_columnconfigure(0, weight=0)
+        self.info_card.grid_columnconfigure(1, weight=1)
+        self.info_card.grid_rowconfigure(0, weight=1)
+
+        # Avatar photo à gauche
+        photo_box = ctk.CTkFrame(self.info_card, fg_color="#0b0f14", width=95, height=95, corner_radius=4, border_width=1, border_color="#2a3947")
+        photo_box.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
+        photo_box.pack_propagate(False)
+
+        self.lbl_photo_avatar = ctk.CTkLabel(photo_box, text="[ ACCÈS ]\n[ EN ATTENTE ]", font=("Times New Roman", 9, "bold"), text_color=TEXT_MUTED)
+        self.lbl_photo_avatar.pack(fill="both", expand=True)
+
+        # Grille d'informations à droite
+        details_grid = ctk.CTkFrame(self.info_card, fg_color="transparent")
+        details_grid.grid(row=0, column=1, padx=(4, 6), pady=4, sticky="nsew")
+        details_grid.grid_columnconfigure(1, weight=1)
+
+        # Lignes d'informations
+        # CNI
+        ctk.CTkLabel(details_grid, text="CNI / ID :", font=("Times New Roman", 10, "bold"), text_color=TEXT_MUTED, anchor="w").grid(row=0, column=0, sticky="w", pady=1)
+        self.lbl_cni_val = ctk.CTkLabel(details_grid, text="----", font=("Times New Roman", 10, "bold"), text_color=TEXT_MAIN, anchor="w")
+        self.lbl_cni_val.grid(row=0, column=1, sticky="w", padx=(4, 0), pady=1)
+
+        # NOM & PRÉNOM
+        ctk.CTkLabel(details_grid, text="NOM & PRÉNOM :", font=("Times New Roman", 10, "bold"), text_color=TEXT_MUTED, anchor="w").grid(row=1, column=0, sticky="w", pady=1)
+        self.lbl_name_val = ctk.CTkLabel(details_grid, text="Aucune personne détectée", font=("Times New Roman", 10, "bold"), text_color="#f1c40f", anchor="w")
+        self.lbl_name_val.grid(row=1, column=1, sticky="w", padx=(4, 0), pady=1)
+
+        # POSTE / ZONE
+        ctk.CTkLabel(details_grid, text="POSTE :", font=("Times New Roman", 10, "bold"), text_color=TEXT_MUTED, anchor="w").grid(row=2, column=0, sticky="w", pady=1)
+        self.lbl_poste_val = ctk.CTkLabel(details_grid, text="----", font=("Times New Roman", 10), text_color=TEXT_MAIN, anchor="w")
+        self.lbl_poste_val.grid(row=2, column=1, sticky="w", padx=(4, 0), pady=1)
+
+        # LOCALISATION
+        ctk.CTkLabel(details_grid, text="ADRESSE :", font=("Times New Roman", 10, "bold"), text_color=TEXT_MUTED, anchor="w").grid(row=3, column=0, sticky="w", pady=1)
+        self.lbl_loc_val = ctk.CTkLabel(details_grid, text="----", font=("Times New Roman", 10), text_color=TEXT_MAIN, anchor="w")
+        self.lbl_loc_val.grid(row=3, column=1, sticky="w", padx=(4, 0), pady=1)
+
+        # HEURE DE DÉTECTION
+        ctk.CTkLabel(details_grid, text="HEURE SCAN :", font=("Times New Roman", 10, "bold"), text_color=TEXT_MUTED, anchor="w").grid(row=4, column=0, sticky="w", pady=1)
+        self.lbl_time_val = ctk.CTkLabel(details_grid, text="----", font=("Times New Roman", 10, "bold"), text_color="#38bdf8", anchor="w")
+        self.lbl_time_val.grid(row=4, column=1, sticky="w", padx=(4, 0), pady=1)
+
+        # STATUT D'ACCÈS
+        self.lbl_status_val = ctk.CTkLabel(details_grid, text="[ Système en veille active ]", font=("Times New Roman", 10, "bold"), text_color=TEXT_MUTED, anchor="w")
+        self.lbl_status_val.grid(row=5, column=0, columnspan=2, sticky="w", pady=(3, 1))
+
+        # Aliases pour compatibilité ascendante
+        self.lbl_match_name = self.lbl_name_val
+        self.lbl_match_status = self.lbl_status_val
 
         # =========================================================
         # 2. BLOC CENTRAL : ACCÈS RÉPERTORIÉS
@@ -262,12 +426,23 @@ class DashboardPage:
         self.running_detection = False
         self.detection_thread = None
 
+        if cv2 is not None:
+            self.parent.after(500, self.start_camera)
+
     def start_camera(self):
+        if cv2 is None:
+            self.lbl_status_val.configure(text="[ Webcam indisponible : OpenCV non installé ]", text_color=DANGER_RED)
+            return
         if self.face_detection_running:
             return
         self.face_detection_running = True
         self.running_detection = True
         self.camera_feed.start()
+        if self.camera_feed.cap is None:
+            self.face_detection_running = False
+            self.running_detection = False
+            self.lbl_status_val.configure(text="[ Caméra indisponible ]", text_color=DANGER_RED)
+            return
         self.camera_feed.set_scan_grid(True)
         self.btn_camera.configure(text="CAMÉRA ACTIVE", state="disabled")
         self.btn_stop_camera.configure(state="normal")
@@ -283,7 +458,7 @@ class DashboardPage:
         self.camera_feed.label.image = None
         self.btn_camera.configure(text="LANCER LA CAMÉRA", state="normal")
         self.btn_stop_camera.configure(state="disabled")
-        self.lbl_match_status.configure(text="Système en veille active", text_color=TEXT_MUTED)
+        self.lbl_status_val.configure(text="[ Système en veille active ]", text_color=TEXT_MUTED)
 
     def refresh_accesses(self):
         for child in self.access_display.winfo_children():
@@ -305,11 +480,15 @@ class DashboardPage:
 
     def get_random_person(self):
         rows = db.fetch_all(
-            f'SELECT cni, nom, prenom, ville, quartier FROM "{TABLE_PERSONNE}" ORDER BY random() LIMIT 1;'
+            f'SELECT cni, nom, prenom, ville, quartier, photo_path, poste FROM "{TABLE_PERSONNE}" ORDER BY random() LIMIT 1;'
         )
         if rows:
-            cni, nom, prenom, ville, quartier = rows[0]
-            return {"cni": cni, "nom": nom, "prenom": prenom, "ville": ville, "quartier": quartier, "registered": True}
+            cni, nom, prenom, ville, quartier, photo_path, poste = rows[0]
+            return {
+                "cni": cni, "nom": nom, "prenom": prenom, "ville": ville,
+                "quartier": quartier, "photo_path": photo_path or "",
+                "poste": poste or "Personnel", "registered": True
+            }
         return None
 
     # ---------------------------------------------------------
@@ -323,21 +502,70 @@ class DashboardPage:
         ctk.CTkLabel(header, text=sub_title, font=("Times New Roman", 10), text_color=TEXT_MUTED).pack(anchor="w")
         ctk.CTkFrame(parent, fg_color=SEPARATOR_COLOR, height=2).pack(fill="x", padx=6, pady=(0, 4))
 
-    def _add_form_field(self, parent, label_text):
-        ctk.CTkLabel(parent, text=label_text, font=FONT_BOLD, text_color=TEXT_MUTED).pack(anchor="w", pady=(3, 1))
-        entry = ctk.CTkEntry(parent, height=28, font=FONT_NORMAL, fg_color=FIELD_BG, border_color=FIELD_BORDER,
-                             text_color=TEXT_MAIN)
-        entry.pack(fill="x", pady=(0, 6))
-        return entry
+    def _display_person_info(self, cni="", nom="", prenom="", poste="", ville="", quartier="", photo_path=None, face_img=None,
+                             status_text="Statut inconnu", status_color=TEXT_MUTED,
+                             welcome_text="<< DÉTECTION >>", welcome_color=WELCOME_GREEN):
+        """Affiche les informations complètes de la personne sous la vidéo."""
+        self.lbl_welcome.configure(text=welcome_text, text_color=welcome_color)
+        self.lbl_cni_val.configure(text=cni or "----")
+        full_name = f"{nom or ''} {prenom or ''}".strip()
+        self.lbl_name_val.configure(text=full_name or "Visage non identifié", text_color=TEXT_MAIN if full_name else "#f1c40f")
+        self.lbl_poste_val.configure(text=poste or "Zone de Surveillance")
+        loc = f"{quartier or ''}, {ville or ''}".strip(', ')
+        self.lbl_loc_val.configure(text=loc or "Non précisée")
+        self.lbl_time_val.configure(text=datetime.now().strftime("%H:%M:%S (%d/%m/%Y)"))
+        self.lbl_status_val.configure(text=status_text, text_color=status_color)
+
+        # Affichage de la photo miniature (avatar)
+        loaded_img = None
+        if face_img is not None and cv2 and Image:
+            try:
+                rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+                loaded_img = Image.fromarray(rgb).resize((85, 85))
+            except Exception:
+                loaded_img = None
+
+        if loaded_img is None and photo_path:
+            candidate = str(photo_path).replace('\\', '/')
+            if not os.path.isabs(candidate):
+                root = os.path.dirname(os.path.abspath(__file__))
+                candidates = [
+                    os.path.abspath(os.path.join(root, candidate)),
+                    os.path.abspath(os.path.join(root, 'media', os.path.basename(candidate))),
+                    os.path.abspath(os.path.join(root, 'data_photos', os.path.basename(candidate))),
+                ]
+                for path in candidates:
+                    if os.path.isfile(path):
+                        candidate = path
+                        break
+            if os.path.isfile(candidate) and Image:
+                try:
+                    loaded_img = Image.open(candidate).resize((85, 85))
+                except Exception:
+                    loaded_img = None
+
+        if loaded_img and ctk:
+            try:
+                ctk_img = ctk.CTkImage(light_image=loaded_img, dark_image=loaded_img, size=(85, 85))
+                self.lbl_photo_avatar.configure(image=ctk_img, text="")
+                self.lbl_photo_avatar.image = ctk_img
+            except Exception:
+                self.lbl_photo_avatar.configure(image=None, text="[ PAS DE\nPHOTO ]")
+                self.lbl_photo_avatar.image = None
+        else:
+            self.lbl_photo_avatar.configure(image=None, text="[ PAS DE\nPHOTO ]")
+            self.lbl_photo_avatar.image = None
 
     def reset_form(self):
-        for entry in [self.entry_nom, self.entry_prenom, self.entry_cni, self.entry_dob, self.entry_quartier,
-                  self.entry_ville, self.entry_empreinte]:
-            entry.delete(0, 'end')
-        self.poste_option.set(db.get_postes()[0] if db.get_postes() else "Accueil")
         self.lbl_welcome.configure(text="<< EN ATTENTE DE DÉTECTION >>", text_color=WELCOME_GREEN)
-        self.lbl_match_name.configure(text="Aucune personne détectée")
-        self.lbl_match_status.configure(text="Système en veille active")
+        self.lbl_cni_val.configure(text="----")
+        self.lbl_name_val.configure(text="Aucune personne détectée", text_color="#f1c40f")
+        self.lbl_poste_val.configure(text="----")
+        self.lbl_loc_val.configure(text="----")
+        self.lbl_time_val.configure(text="----")
+        self.lbl_status_val.configure(text="[ Système en veille active ]", text_color=TEXT_MUTED)
+        self.lbl_photo_avatar.configure(image=None, text="[ ACCÈS ]\n[ EN ATTENTE ]")
+        self.lbl_photo_avatar.image = None
 
     def simulate_realtime_detection_loop(self):
         """
@@ -367,18 +595,10 @@ class DashboardPage:
 
     def face_detection_loop(self):
         """Boucle réelle lisant la webcam, détectant les visages et effectuant la reconnaissance faciale."""
-        os.makedirs('data_photos', exist_ok=True)
-        no_camera_counter = 0
-
         while self.face_detection_running:
             try:
                 cap = getattr(self.camera_feed, 'cap', None)
                 if cap is None or not cap.isOpened():
-                    no_camera_counter += 1
-                    if no_camera_counter > 10:
-                        # Revenir à la simulation si la caméra n'est pas branchée
-                        self.simulate_realtime_detection_loop()
-                        break
                     time.sleep(0.5)
                     continue
 
@@ -386,6 +606,8 @@ class DashboardPage:
                 if not ret or frame is None:
                     time.sleep(0.05)
                     continue
+
+                self.camera_feed.set_latest_frame(frame)
 
                 if self.face_cascade is None:
                     time.sleep(0.5)
@@ -399,6 +621,16 @@ class DashboardPage:
                     x, y, w, h = max(faces, key=lambda r: r[2] * r[3])
                     face_img = frame[y:y + h, x:x + w]
 
+                    # Recadrage temporaire centré sur le visage dans le flux affiché.
+                    frame_height, frame_width = frame.shape[:2]
+                    target_ratio = self.camera_feed.size[0] / self.camera_feed.size[1]
+                    crop_height = min(frame_height, max(h * 2, int(w * 2 / target_ratio)))
+                    crop_width = min(frame_width, max(w * 2, int(crop_height * target_ratio)))
+                    center_x, center_y = x + w // 2, y + h // 2
+                    left = max(0, min(frame_width - crop_width, center_x - crop_width // 2))
+                    top = max(0, min(frame_height - crop_height, center_y - crop_height // 2))
+                    display_frame = frame[top:top + crop_height, left:left + crop_width].copy()
+
                     # Calcul des coordonnées normalisées pour le rectangle sur la vidéo
                     fh, fw = frame.shape[0], frame.shape[1]
                     x_norm = x / fw
@@ -411,24 +643,33 @@ class DashboardPage:
 
                     if matched:
                         # Visage Reconnu
-                        self.camera_feed.set_overlay((x_norm, y_norm, w_norm, h_norm), color='green')
+                        frame_color = (0, 255, 0)
                         cni = matched.get('cni', '')
                         now_ts = time.time()
-
-                        if cni not in self.recent_detections or (now_ts - self.recent_detections[cni]) > self.deduplication_cooldown:
+                        should_log = (
+                            cni not in self.recent_detections
+                            or (now_ts - self.recent_detections[cni]) > self.deduplication_cooldown
+                        )
+                        if should_log:
                             self.recent_detections[cni] = now_ts
-                            person_data = {
-                                "cni": matched.get('cni', ''),
-                                "nom": matched.get('nom', ''),
-                                "prenom": matched.get('prenom', ''),
-                                "ville": matched.get('ville', ''),
-                                "quartier": matched.get('quartier', ''),
-                                "registered": True
-                            }
-                            self.parent.after(0, lambda p=person_data: self.process_automatic_detection(p))
+                        person_data = {
+                            "cni": matched.get('cni', ''),
+                            "nom": matched.get('nom', ''),
+                            "prenom": matched.get('prenom', ''),
+                            "ville": matched.get('ville', ''),
+                            "quartier": matched.get('quartier', ''),
+                            "poste": matched.get('poste', 'Personnel'),
+                            "photo_path": matched.get('photo_path', ''),
+                            "face_img": face_img.copy(),
+                            "registered": True
+                        }
+                        self.parent.after(
+                            0,
+                            lambda p=person_data, log=should_log: self.process_automatic_detection(p, log)
+                        )
                     else:
                         # Visage Inconnu
-                        self.camera_feed.set_overlay((x_norm, y_norm, w_norm, h_norm), color='red')
+                        frame_color = (0, 0, 255)
                         now_ts = time.time()
                         unk_key = "UNKNOWN_FACE"
 
@@ -436,8 +677,21 @@ class DashboardPage:
                             self.recent_detections[unk_key] = now_ts
                             self.parent.after(0, lambda f=face_img.copy(): self._handle_unknown_detection(f))
 
+                    relative_x = x - left
+                    relative_y = y - top
+                    cv2.rectangle(
+                        display_frame,
+                        (relative_x, relative_y),
+                        (relative_x + w, relative_y + h),
+                        frame_color,
+                        3,
+                    )
+                    self.camera_feed.set_focus_frame(display_frame)
+                    self.camera_feed.set_overlay(None)
+
                 else:
                     self.camera_feed.set_overlay(None)
+                    self.camera_feed.set_focus_frame(None)
 
                 time.sleep(0.1)
             except Exception:
@@ -450,64 +704,38 @@ class DashboardPage:
             return
         self._prompt_active = True
 
-        self.lbl_welcome.configure(text="<< ALERTE : INCONNU DÉTECTÉ >>", text_color=DANGER_RED)
-        self.lbl_match_name.configure(text="Visage non reconnu dans les profils locaux")
-        self.lbl_match_status.configure(text="Statut : Nouveau / Inconnu (Capture Live)", text_color=DANGER_RED)
+        self._display_person_info(
+            cni="INCONNU", nom="VISAGE", prenom="NON IDENTIFIÉ",
+            poste="Zone de Surveillance", ville="Inconnue", quartier="Inconnu",
+            face_img=face_img,
+            status_text="▲ ALERTE : VISAGE NON RECONNU", status_color=DANGER_RED,
+            welcome_text="<< ALERTE : INCONNU DÉTECTÉ >>", welcome_color=DANGER_RED
+        )
 
         try:
             ask = messagebox.askyesno('Personne inconnue', 'Un visage non reconnu a été détecté.\nVoulez-vous enregistrer cette personne ?')
-            capture_path = None
-            if face_img is not None:
-                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                capture_path = os.path.join('data_photos', f"intrus_{ts}.jpg")
-                try:
-                    cv2.imwrite(capture_path, face_img)
-                except Exception:
-                    capture_path = None
             db.execute(
                 f'INSERT INTO "{TABLE_INTRUS}" (photo, piece, date_heure, remarque) VALUES (%s, %s, %s, %s);',
-                (capture_path or "", "Zone de surveillance", datetime.now(), "Visage non reconnu"),
+                ("", "Zone de surveillance", datetime.now(), "Visage non reconnu"),
             )
             if ask:
-                new_cni = simpledialog.askstring('Enregistrer', 'Entrez le CNI / NISS de la personne :')
-                if new_cni:
-                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f"{new_cni}_{ts}.jpg"
-                    filepath = os.path.join('data_photos', filename)
-                    filepath = capture_path or filepath
-
-                    try:
-                        if filepath:
-                            db.execute(
-                                f'INSERT INTO "{TABLE_PERSONNE}" (cni, nom, prenom, ville, quartier, date_enregistrement, photo_path) '
-                                f'VALUES (%s, %s, %s, %s, %s, %s, %s) '
-                                f'ON CONFLICT (cni) DO UPDATE SET photo_path = EXCLUDED.photo_path;',
-                                (new_cni, 'INCONNU', 'Nouveau', '', '', datetime.now(), filepath)
-                            )
-                        else:
-                            db.execute(
-                                f'INSERT INTO "{TABLE_PERSONNE}" (cni, nom, prenom, ville, quartier, date_enregistrement) '
-                                f'VALUES (%s, %s, %s, %s, %s, %s);',
-                                (new_cni, 'INCONNU', 'Nouveau', '', '', datetime.now())
-                            )
-                        db.execute(
-                            f'INSERT INTO "{TABLE_LOGS}" (cni, date_heure, commentaire, piece, statut) VALUES (%s, %s, %s, %s, %s);',
-                            (new_cni, datetime.now(), 'Enregistré via alerte détection', 'Zone de surveillance', 'Enregistré')
-                        )
-
-                        self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : ENREGISTRÉ (NOUVEAU)", text_color=SUCCESS_GREEN)
-                        messagebox.showinfo("Succès", f"Capture et CNI {new_cni} enregistrés dans les fichiers JSON !")
-                    except Exception as e:
-                        messagebox.showerror("Erreur JSON", f"Échec de l'enregistrement : {e}")
+                if self.controller and hasattr(self.controller, "switch_tab"):
+                    self.controller.switch_tab(1)
         finally:
             self._prompt_active = False
 
-    def process_automatic_detection(self, person):
-        """Traite l'affichage dynamique de la détection et remplit les fiches."""
+    def process_automatic_detection(self, person, save_log=True):
+        """Traite l'affichage dynamique de la détection et remplit la fiche d'information complète."""
         nom = person.get("nom", "")
         prenom = person.get("prenom", "")
+        cni = person.get("cni", "")
+        poste = person.get("poste", "Accueil / Surveillance")
+        ville = person.get("ville", "")
+        quartier = person.get("quartier", "")
+        photo_path = person.get("photo_path", "")
+        face_img = person.get("face_img")
+        registered = person.get("registered", False)
 
-        # Affichage du message de bienvenue dynamique
         if prenom and ("CHRISTELLE" in prenom.upper() or "LOMO" in nom.upper()):
             welcome_text = "<< BIENVENUE CHRISTELLE >>"
         elif prenom:
@@ -515,17 +743,23 @@ class DashboardPage:
         else:
             welcome_text = "<< BIENVENUE >>"
 
-        self.lbl_welcome.configure(text=welcome_text, text_color=WELCOME_GREEN)
-        self.lbl_match_name.configure(text=f"{nom} {prenom} (CNI: {person.get('cni', '')})")
-
-        if person.get("registered", False):
-            self.lbl_match_status.configure(text="Statut : Reconnu (photo locale chargée)", text_color=SUCCESS_GREEN)
+        if registered:
+            status_text = "● ACCÈS AUTORISÉ (Profil local)"
+            status_color = SUCCESS_GREEN
         else:
-            self.lbl_match_status.configure(text="Statut : Nouveau / Inconnu (Capture Live)", text_color=DANGER_RED)
+            status_text = "▲ ALERTE : INCONNU NON RECONNU"
+            status_color = DANGER_RED
+
+        self._display_person_info(
+            cni=cni, nom=nom, prenom=prenom, poste=poste,
+            ville=ville, quartier=quartier, photo_path=photo_path, face_img=face_img,
+            status_text=status_text, status_color=status_color,
+            welcome_text=welcome_text, welcome_color=WELCOME_GREEN if registered else DANGER_RED
+        )
 
         # Mise à jour de la carte interactive Google Maps via tkintermapview
-        if tkintermapview and hasattr(self, "map_widget") and (person.get('quartier') or person.get('ville')):
-            adresse = f"{person.get('quartier', '')}, {person.get('ville', '')}".strip(', ')
+        if tkintermapview and hasattr(self, "map_widget") and (quartier or ville):
+            adresse = f"{quartier}, {ville}".strip(', ')
             if adresse:
                 try:
                     self.map_widget.set_address(adresse, marker=True)
@@ -535,91 +769,94 @@ class DashboardPage:
 
         # Enregistrement automatique des passages dans le fichier des accès.
         try:
-            db.execute(
-                f'INSERT INTO "{TABLE_LOGS}" (cni, date_heure, piece, statut) VALUES (%s, %s, %s, %s);',
-                (person["cni"], datetime.now(), "Zone de surveillance",
-                 "Détecté - Autorisé" if person.get("registered") else "Détecté - Alerte Inconnu")
-            )
-            self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : ACCÈS SAUVEGARDÉ EN JSON",
-                                         text_color=SUCCESS_GREEN)
+            if save_log:
+                db.execute(
+                    f'INSERT INTO "{TABLE_LOGS}" (cni, date_heure, piece, statut) VALUES (%s, %s, %s, %s);',
+                    (cni, datetime.now(), "Zone de surveillance",
+                     "Détecté - Autorisé" if registered else "Détecté - Alerte Inconnu")
+                )
+            
+            # Génération automatique du rapport PDF si la personne est enregistrée en BD
+            if registered and save_log:
+                try:
+                    pdf_path = generate_person_pdf_report(person)
+                    if pdf_path:
+                        self.lbl_db_status.configure(
+                            text=f"STATUT : RAPPORT PDF GÉNÉRÉ ({os.path.basename(pdf_path)})",
+                            text_color=SUCCESS_GREEN
+                        )
+                    else:
+                        self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : ACCÈS SAUVEGARDÉ EN JSON",
+                                                     text_color=SUCCESS_GREEN)
+                except Exception:
+                    self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : ACCÈS SAUVEGARDÉ EN JSON",
+                                                 text_color=SUCCESS_GREEN)
+            elif save_log:
+                self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : ACCÈS SAUVEGARDÉ EN JSON",
+                                             text_color=SUCCESS_GREEN)
         except Exception:
             self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : DÉTECTÉ (LOG NON SYNCHRONISÉ)",
                                          text_color="#f1c40f")
 
-        if self.controller and hasattr(self.controller, 'activity_log'):
+        if save_log and self.controller and hasattr(self.controller, 'activity_log'):
             self.controller.activity_log.append(
                 {
                     'source': 'Dashboard',
                     'time': datetime.now(),
-                    'message': f"Détection {person.get('cni')} - {'Autorisé' if person.get('registered') else 'Inconnu'}"
+                    'message': f"Détection {cni} - {'Autorisé' if registered else 'Inconnu'}"
                 }
             )
 
-    def match_face(self, face_img, max_candidates=30, match_threshold=12):
-        """Essaie de retrouver un visage correspondant parmi les photos stockées en base.
-        Retourne un dict {cni, nom, prenom, photo_path, ville, quartier} ou None.
+    def match_face(self, face_img, max_candidates=50, match_threshold=38.0):
+        """Essaie de retrouver un visage correspondant parmi les profils enregistrés en base (comparaison matricielle).
+        Retourne un dict {cni, nom, prenom, photo_path, ville, quartier, poste, face_id} ou None.
         """
         if cv2 is None or face_img is None:
             return None
         try:
-            rows = db.fetch_all(f'SELECT cni, nom, prenom, photo_path, ville, quartier, face_id FROM "{TABLE_PERSONNE}" WHERE photo_path IS NOT NULL;')
+            rows = db.fetch_all(f'SELECT cni, nom, prenom, photo_path, ville, quartier, face_id, poste FROM "{TABLE_PERSONNE}";')
             if not rows:
                 return None
 
-            gray_q = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
-            orb = cv2.ORB_create(500)
-            kp1, des1 = orb.detectAndCompute(gray_q, None)
-            if des1 is None:
+            current_face_id = extract_face_id(face_img, None)
+            if not current_face_id:
                 return None
 
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
-            checked = 0
+            best_match = None
+            min_distance = float('inf')
 
-            current_face_id = extract_face_id(face_img, None)
-            for cni, nom, prenom, photo_path, ville, quartier, face_id in rows:
-                if (not face_id and not photo_path) or checked >= max_candidates:
-                    checked += 1
+            for cni, nom, prenom, photo_path, ville, quartier, face_id, poste in rows:
+                # Si le face_id est absent mais qu'une photo existe, essayer d'extraire la matrice
+                if not face_id and photo_path:
+                    face_id = extract_face_id_from_path(photo_path, self.face_cascade)
+                    if face_id:
+                        try:
+                            db.update_record(TABLE_PERSONNE, cni, {"face_id": face_id}, key="cni")
+                        except Exception:
+                            pass
+
+                if not face_id:
                     continue
-                if current_face_id and face_id:
-                    matched, _ = compare_face_ids(current_face_id, face_id)
-                    if matched:
-                        return {'cni': cni, 'nom': nom, 'prenom': prenom, 'photo_path': photo_path,
-                                'ville': ville, 'quartier': quartier, 'face_id': face_id}
-                try:
-                    if not os.path.exists(photo_path):
-                        checked += 1
-                        continue
 
-                    img2 = cv2.imread(photo_path)
-                    if img2 is None:
-                        checked += 1
-                        continue
+                matched, distance = compare_face_ids(current_face_id, face_id, threshold=match_threshold)
+                if matched and distance is not None and distance < min_distance:
+                    min_distance = distance
+                    best_match = {
+                        'cni': cni,
+                        'nom': nom,
+                        'prenom': prenom,
+                        'photo_path': photo_path or '',
+                        'ville': ville or '',
+                        'quartier': quartier or '',
+                        'poste': poste or 'Accueil',
+                        'face_id': face_id,
+                        'distance': distance
+                    }
 
-                    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-                    kp2, des2 = orb.detectAndCompute(gray2, None)
-                    if des2 is None:
-                        checked += 1
-                        continue
-
-                    matches = bf.knnMatch(des1, des2, k=2)
-                    good = [m for m, n in matches if len(matches) > 0 and len(m_n := (m, n)) == 2 and m.distance < 0.75 * n.distance] if matches else []
-
-                    if len(good) >= match_threshold:
-                        return {'cni': cni, 'nom': nom, 'prenom': prenom, 'photo_path': photo_path, 'ville': ville, 'quartier': quartier}
-                except Exception:
-                    pass
-                checked += 1
+            return best_match
+        except Exception as err:
+            print(f"[Match Face Error] {err}")
             return None
-        except Exception:
-            return None
-
-    def _show_matched_person(self, matched):
-        try:
-            self.lbl_match_status.configure(text='Statut : Reconnu (photo locale chargée)', text_color=SUCCESS_GREEN)
-            self.lbl_welcome.configure(text=f"<< BIENVENUE {matched.get('prenom') or ''} >>", text_color=SUCCESS_GREEN)
-            self.lbl_match_name.configure(text=f"{matched.get('nom') or ''} {matched.get('prenom') or ''} (CNI: {matched.get('cni')})")
-        except Exception:
-            pass
 
     def save_profile(self):
         """Sauvegarde manuelle ou mise à jour dans le fichier des profils."""
@@ -635,12 +872,26 @@ class DashboardPage:
             messagebox.showerror("Erreur", "Le Nom et le CNI/ID sont obligatoires !")
             return
 
+        is_dup, err_msg, _ = db.check_duplicate_person(cni=cni, nom=nom, prenom=prenom, exclude_cni=cni)
+        if is_dup:
+            messagebox.showerror("Doublon Détecté", err_msg)
+            return
+
         try:
-            db.execute(
-                f'INSERT INTO "{TABLE_PERSONNE}" (nom, prenom, cni, ville, quartier, empreinte_digitale, poste) VALUES (%s, %s, %s, %s, %s, %s, %s) '
-                f'ON CONFLICT (cni) DO UPDATE SET nom = EXCLUDED.nom, prenom = EXCLUDED.prenom, ville = EXCLUDED.ville, quartier = EXCLUDED.quartier, empreinte_digitale = EXCLUDED.empreinte_digitale, poste = EXCLUDED.poste;',
-                (nom, prenom, cni, ville, quartier, empreinte, poste)
-            )
+            people = db.read_table(TABLE_PERSONNE) or []
+            existing = next((p for p in people if str(p.get("cni", "")).upper() == cni.upper()), None)
+            if existing:
+                existing.update({
+                    "nom": nom, "prenom": prenom, "ville": ville,
+                    "quartier": quartier, "empreinte_digitale": empreinte, "poste": poste
+                })
+            else:
+                people.append({
+                    "cni": cni, "nom": nom, "prenom": prenom, "ville": ville,
+                    "quartier": quartier, "empreinte_digitale": empreinte, "poste": poste,
+                    "date_enregistrement": datetime.now().isoformat(timespec="seconds"),
+                })
+            db.write_table(TABLE_PERSONNE, people)
             self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : SUCCÈS (JSON)", text_color=SUCCESS_GREEN)
             messagebox.showinfo("Succès", f"Profil de {prenom} {nom} enregistré avec succès dans les fichiers JSON !")
         except Exception as e:
@@ -669,15 +920,35 @@ class DashboardPage:
         poste = self.poste_option.get()
 
         try:
-            db.execute(
-                f'INSERT INTO "{TABLE_PERSONNE}" (cni, nom, prenom, ville, quartier, photo_path, empreinte_digitale, poste) '
-                f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s) '
-                f'ON CONFLICT (cni) DO UPDATE SET nom = EXCLUDED.nom, prenom = EXCLUDED.prenom, '
-                f'ville = EXCLUDED.ville, quartier = EXCLUDED.quartier, photo_path = EXCLUDED.photo_path, '
-                f'empreinte_digitale = EXCLUDED.empreinte_digitale, poste = EXCLUDED.poste;',
-                (cni, nom, prenom, ville, quartier, file_path, empreinte, poste)
-            )
-            self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : PHOTO ENREGISTRÉE", text_color=SUCCESS_GREEN)
-            messagebox.showinfo("Succès", "Photo associée au profil et enregistrée dans les fichiers JSON.")
+            face_id = extract_face_id_from_path(file_path, self.face_cascade)
+            serializable_face_id = face_id.tolist() if hasattr(face_id, "tolist") else face_id
+            is_dup, err_msg, _ = db.check_duplicate_person(cni=cni, nom=nom, prenom=prenom, face_id=serializable_face_id, photo_path=file_path, exclude_cni=cni)
+            if is_dup:
+                messagebox.showerror("Enregistrement Refusé - Doublon Détecté", err_msg)
+                return
+
+            people = db.read_table(TABLE_PERSONNE) or []
+            existing = next((p for p in people if str(p.get("cni", "")).upper() == cni.upper()), None)
+            if existing:
+                existing.update({
+                    "nom": nom or existing.get("nom"),
+                    "prenom": prenom or existing.get("prenom"),
+                    "ville": ville or existing.get("ville"),
+                    "quartier": quartier or existing.get("quartier"),
+                    "photo_path": file_path,
+                    "face_id": serializable_face_id,
+                    "empreinte_digitale": empreinte or existing.get("empreinte_digitale"),
+                    "poste": poste or existing.get("poste"),
+                })
+            else:
+                people.append({
+                    "cni": cni, "nom": nom, "prenom": prenom, "ville": ville,
+                    "quartier": quartier, "photo_path": file_path, "face_id": serializable_face_id,
+                    "empreinte_digitale": empreinte, "poste": poste,
+                    "date_enregistrement": datetime.now().isoformat(timespec="seconds"),
+                })
+            db.write_table(TABLE_PERSONNE, people)
+            self.lbl_db_status.configure(text="STATUT D'ENREGISTREMENT : PHOTO ET MATRICE ENREGISTRÉES", text_color=SUCCESS_GREEN)
+            messagebox.showinfo("Succès", "Photo et matrice faciale associées au profil et enregistrées dans les fichiers JSON.")
         except Exception as e:
             messagebox.showerror("Erreur JSON", f"Impossible d'enregistrer la photo : {str(e)}")
